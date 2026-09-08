@@ -1455,7 +1455,27 @@ window.toggleRatePanel=function(){
   const p=document.getElementById("rate-panel"); if(!p) return;
   p.style.display = p.style.display==="none" ? "block" : "none";
 };
-function songPlayable(s){ return s.free || songsUnlocked(); } // 解放済みならストリーミングで即再生。端末への保存は任意（オフライン用）
+function songPlayable(s){ return true; } // 無料曲・解放済みは全編、それ以外はサビから30秒の試聴（songPreview）
+const PREVIEW_SEC=30;
+function songPreview(s){ // 試聴が必要なら {start,end} を返す。全編聴ける曲は null
+  if(s.free || songsUnlocked()) return null;
+  let start=0;
+  try{
+    if(s.sync && s.blocks){
+      let li=0, found=-1;
+      for(const b of s.blocks){
+        const isChorus=/chorus|サビ|hook/i.test(b.h||"") && !/pre/i.test(b.h||"");
+        for(const l of b.lines){ if(l===""){ continue; } if(isChorus && found<0){ found=li; } li++; }
+        if(found>=0) break;
+      }
+      if(found>=0 && s.sync[found]>0) start=Math.max(0, s.sync[found]-0.8);
+    }
+  }catch(e){}
+  return {start:start, end:start+PREVIEW_SEC};
+}
+function previewEndNotice(){
+  musicOffNotice("🎵 サビの試聴はここまで","プレミアムに入ると全"+totalSongN()+"曲を最後まで聴けるよ。歌詞も自動で追いかけるよ");
+}
 window.goSong=function(id){
   // 常駐プレイヤーで即差し替え（画面ボタン・ロック画面のどちらから来ても同じ経路）
   if(SONGS && currentSongId){
@@ -1509,7 +1529,7 @@ function makeNativeSongEl(){
     const src=st.src;
     (async function(){
       await ensureSrcCache(list);
-      const tracks=list.map(function(x){ return {id:x.id, src:(x.id===sid && src)?src:(srcCache[x.id]||SONGS_BASE_URL+x.file), title:x.title, artist:nativeArtist(), art:nativeArtPath()}; });
+      const tracks=list.map(function(x){ const pv=songPreview(x); return {id:x.id, src:(x.id===sid && src)?src:(srcCache[x.id]||SONGS_BASE_URL+x.file), title:x.title+(pv?"（試聴）":""), artist:nativeArtist(), art:nativeArtPath(), preview:pv||undefined}; });
       if(!tracks.length) return;
       st.loadedId=sid; st.loadedSrc=src; st.ended=false;
       npPost({cmd:"queue",tracks:tracks,start:sid,autoplay:true,repeat:repMode(),shuffle:shufOn()});
@@ -1540,6 +1560,9 @@ window.__shiaPlayerEvent=function(e){
       if(wasPaused && !st.paused) el.dispatchEvent(new Event("play"));
       if(!wasPaused && st.paused) el.dispatchEvent(new Event("pause"));
       el.dispatchEvent(new Event("timeupdate"));
+    }else if(e.type==="previewEnd"){
+      st.paused=true; el.dispatchEvent(new Event("pause")); el.dispatchEvent(new Event("timeupdate"));
+      previewEndNotice();
     }else if(e.type==="trackEnded"){
       if(e.id && e.duration>0 && e.listened>=e.duration*0.9) markSongHeard(e.id);
     }else if(e.type==="error"){
@@ -1548,6 +1571,21 @@ window.__shiaPlayerEvent=function(e){
   }catch(err){}
 };
 // ネイティブ側の準備ができたら、まだ鳴っていない audio要素をネイティブ用に差し替える
+// Web版の案内バナー（配信ドメインのときだけ。ブラウザプレビューやアプリでは出さない）
+(function(){
+  try{
+    if(!/github\.io$/.test(location.hostname) || isNativeApp()) return;
+    if(localStorage.getItem("shia_webbanner")==="off") return;
+    const b=document.createElement("div");
+    b.id="webbanner";
+    b.style.cssText="position:fixed;left:0;right:0;bottom:0;z-index:9998;background:linear-gradient(135deg,#FFF0F5,#EDF3FF);border-top:2px solid #FFA9C1;padding:10px 14px;display:flex;gap:10px;align-items:center;font-size:12.5px;line-height:1.5;box-shadow:0 -4px 16px rgba(47,59,92,.12)";
+    b.innerHTML='<span style="font-size:22px">📱</span><span style="flex:1"><b>アプリ版は無料・広告なし</b><br>全'+(typeof totalSongN==="function"?totalSongN():"")+'曲の覚え歌と歌詞の自動追従はアプリで</span>'+
+      '<a href="https://apps.apple.com/jp/app/id6791851222" target="_blank" rel="noopener" style="background:#E85A8A;color:#fff;font-weight:bold;border-radius:999px;padding:8px 12px;text-decoration:none;white-space:nowrap">App Store</a>'+
+      '<button aria-label="閉じる" style="border:none;background:none;font-size:18px;color:#8B96AF;cursor:pointer" onclick="this.parentNode.remove();try{localStorage.setItem(\'shia_webbanner\',\'off\')}catch(e){}">✕</button>';
+    document.body.appendChild(b);
+    document.body.style.paddingBottom="72px";
+  }catch(e){}
+})();
 window.addEventListener("shia-native-ready",function(){
   try{ if(audioEl && !audioEl._st && audioEl.paused){ audioEl.remove(); audioEl=null; } }catch(e){}
 });
@@ -1574,13 +1612,17 @@ function getAudioEl(){
   audioEl.setAttribute("preload","metadata");
   }
   audioEl.addEventListener("ended",onSongEnded);
-  audioEl.addEventListener("loadedmetadata",function(){ try{audioEl.playbackRate=songRate();}catch(e){} });
+  audioEl.addEventListener("loadedmetadata",function(){ try{audioEl.playbackRate=songRate();}catch(e){} try{ const sg=currentSongId?songById(currentSongId):null, pv=sg?songPreview(sg):null; if(pv&&pv.start>0&&!audioEl._st) audioEl.currentTime=pv.start; }catch(e){} });
   audioEl.addEventListener("play",function(){ notifyPlaying(true); musicCtxResume(); try{ navigator.mediaSession.playbackState="playing"; }catch(e){} try{ bgmStop(); bgmAudioStop(); }catch(e){} syncPlayerUI(); });
   audioEl.addEventListener("pause",function(){ notifyPlaying(false); try{ navigator.mediaSession.playbackState="paused"; }catch(e){} reassertMediaSession(); try{ bgmUpdate(); }catch(e){} syncPlayerUI(); });
   // 実聴取時間の計測: 通常再生での前進だけを積み上げる（シークの大ジャンプは数えない）
   audioEl.addEventListener("timeupdate",function(){
     try{
       const t=audioEl.currentTime;
+      if(!audioEl._st && currentSongId){ // 試聴区間の終わりで止める（ネイティブ再生では ShiaPlayer 側が止める）
+        const sg=songById(currentSongId), pv=sg?songPreview(sg):null;
+        if(pv && t>=pv.end){ audioEl.pause(); try{ audioEl.currentTime=pv.start; }catch(e){} previewEndNotice(); return; }
+      }
       if(listenLast!==null){ const d=t-listenLast; if(d>0 && d<2.5) listenAcc+=d; }
       listenLast=t;
     }catch(e){}
@@ -2373,9 +2415,9 @@ function songsView(){
     let state;
     if(songDlBusy===s.id) state='<span class="songstate" style="color:#8E7CC3">⏳ 保存中…</span>';
     else if(s.free) state='<span class="songstate" style="color:#3FB68B">無料 ▶</span>';
-    else if(!songsUnlocked()) state='<span class="songstate" style="color:#E85A8A">🔒 プレミアム</span>';
+    else if(!songsUnlocked()) state='<span class="songstate" style="color:#E85A8A"><span style="font-size:10px;margin-right:4px">試聴30秒</span>▶</span>';
     else state=`<span class="songstate" style="color:#E85A8A">${isNativeApp()&&isDownloaded(s.id)?'<span style="font-size:10px;color:#1E7A5A;margin-right:6px">保存済み</span>':""}▶</span>`;
-    const open = playable ? `go('song','${s.id}')` : `go('premium')`;
+    const open = `go('song','${s.id}')`;
     return sec+`<div class="songrow" onclick="${open}">
       <span class="songnum">${esc(currentDojo==="shia"?s.title.replace("編",""):String(s.num))}</span>
       <span style="flex:1;min-width:0"><b style="font-size:14px">${esc(s.title)}</b>
@@ -2389,6 +2431,7 @@ function songView(){
   if(!s) return songsView();
   if(s.sync) setTimeout(function(){ lyrLastIdx=-1; lyrUserScrollAt=0; lyrAutoUntil=Date.now()+1500; try{ lyricsFollow(); }catch(e){} },0);
   const playable = songPlayable(s);
+  const pv = songPreview(s);
   let player;
   if(playable){
     const r=songRate();
@@ -2420,8 +2463,12 @@ function songView(){
       </div>
       <p class="small" style="text-align:center;margin-top:8px">0.7〜10×まで0.1きざみで調整できるよ（速度は記憶されるよ）</p>
     </div>`;
-  }else{
-    player=`<button class="btn" style="background:linear-gradient(135deg,#FF8FB1,#E85A8A)" onclick="go('premium')">🔒 プレミアムで解放する</button>`;
+  }
+  if(pv){
+    player+=`<div style="margin-top:10px;border-radius:14px;padding:10px 12px;background:rgba(232,90,138,.08);border:1.5px dashed rgba(232,90,138,.45);text-align:center">
+      <b style="font-size:13px;color:#E85A8A">🎧 サビから30秒の試聴</b>
+      <p class="small" style="margin-top:3px;line-height:1.6">この曲は試聴だけ。プレミアムなら全${totalSongN()}曲を最後まで、歌詞つきで聴けるよ</p>
+      <button class="btn" style="margin-top:8px;background:linear-gradient(135deg,#FF8FB1,#E85A8A)" onclick="go('premium')">🔓 プレミアムで全部聴く</button></div>`;
   }
   const idx=activeSongs().findIndex(function(x){return x.id===s.id});
   const prevS=idx>0?activeSongs()[idx-1]:null, nextS=idx<activeSongs().length-1?activeSongs()[idx+1]:null;
@@ -2435,7 +2482,7 @@ function songView(){
       <button class="btn ghost" style="padding:10px;font-size:12px${nextS?"":";opacity:.35"}" ${nextS?`onclick="goSong('${nextS.id}')"`:"disabled"}>${nextS?esc(nextS.title):"次の曲"} ⏭</button>
     </div>
     ${playable?`<p class="small" style="text-align:center;margin-top:8px">再生が終わると次の曲へ自動で進むよ。画面を消してもOK、ロック画面からも操作できるよ</p>`:""}
-    ${isNativeApp()&&playable&&!(s.free&&s.id==="a")?(isDownloaded(s.id)
+    ${isNativeApp()&&playable&&!pv&&!(s.free&&s.id==="a")?(isDownloaded(s.id)
       ?`<button class="btn ghost" style="margin-top:10px;font-size:12px" onclick="rmSong('${s.id}')">🧹 オフライン保存を削除（端末を軽くする）</button>`
       :songDlBusy===s.id?`<p class="small" style="text-align:center;margin-top:10px;font-weight:bold">⏳ 端末に保存中…</p>`
       :`<button class="btn ghost" style="margin-top:10px;font-size:12px" onclick="dlSong('${s.id}')">📥 オフライン保存（電波がなくても聴ける）</button>`):""}
