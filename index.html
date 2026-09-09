@@ -2424,7 +2424,7 @@ function songsView(){
   :currentDojo==="sena"?`<div class="card" style="display:flex;align-items:center;gap:12px"><span style="font-size:30px">🧯</span><span style="flex:1"><b style="font-size:14px">緋守セナの覚え歌 全${SONGS_N.sena}曲</b><p class="small" style="margin-top:2px">指定数量・引火点・倍数計算 — 乙4の頻出数字を歌でピタリと！</p></span></div>`
   :currentDojo==="towa"?(SONGS_N.towa?`<div class="card" style="display:flex;align-items:center;gap:12px"><span style="font-size:30px">🏗️</span><span style="flex:1"><b style="font-size:14px">築城トワの覚え歌 全${SONGS_N.towa}曲</b><p class="small" style="margin-top:2px">四大管理から土工事・鉄骨・防水・仕上げ・法規まで — 施工管理の要点を歌で積み上げる！</p></span></div>`
     :towaBubble("覚え歌はいま制作中。完成図だけ見ても意味ないよ——まずは問題と模試で、合格までの工程を積み上げよう。曲ができたらここに並ぶから楽しみにしてて。"))
-  :bubble("cheer",nickTag()+"セキュリティ辞典を歌でおぼえよう！A〜Zとア〜ワ行、全"+SONGS_N.shia+"曲そろってるよ！")}
+  :bubble("cheer",nickTag()+"セキュリティ辞典を歌でおぼえよう！A〜Zとア〜ワ行、全"+SONGS_N.shia+"曲そろってるよ！無料で聴けるのは A編・B編・C編と、ア編・カ行の5曲だよ")}
   ${isNativeApp()&&songsUnlocked()?(function(){
     const remain=activeSongs().filter(function(x){return !isDownloaded(x.id)&&!(x.free&&x.id==="a");}).length;
     if(dlAllBusy) return `<button class="btn" disabled style="opacity:.85">⏳ まとめて保存中… ${dlAllBusy.done}/${dlAllBusy.total}曲</button>`;
