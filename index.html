@@ -499,10 +499,10 @@ body.dojo-towa .certbadge{background:rgba(232,182,42,.20);color:#7A5A00}
 .figzoom-hint{position:absolute;right:8px;top:8px;background:rgba(142,124,195,.9);color:#fff;
   border-radius:999px;padding:3px 10px;font-size:11px;font-weight:bold;pointer-events:none}
 #figview{position:fixed;inset:0;z-index:90;display:none;background:rgba(47,59,92,.92);
-  overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pinch-zoom}
+  overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y pinch-zoom;overscroll-behavior:contain}
 #figview.show{display:block}
 #figview .figwrap{min-height:100%;display:block;width:max-content;min-width:100%;padding:64px 12px 24px;box-sizing:border-box}
-#figview .figinner{background:#fff;border-radius:14px;padding:12px;display:inline-block;touch-action:none}
+#figview .figinner{background:#fff;border-radius:14px;padding:12px;display:inline-block}
 #figview .fighint{position:fixed;left:0;right:0;bottom:calc(14px + env(safe-area-inset-bottom));text-align:center;color:#fff;font-size:12px;font-weight:bold;pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,.5)}
 #figview svg{max-width:none;height:auto;display:block}
 #figview-close{position:fixed;top:calc(12px + env(safe-area-inset-top));right:14px;z-index:91;
