@@ -193,6 +193,10 @@ h1{font-size:20px;margin-bottom:4px}
   animation:flashPop .5s ease-out forwards}
 @keyframes flashPop{0%{opacity:0}16%{opacity:.92}100%{opacity:0}}
 #apptitle.opening{filter:brightness(1.22) saturate(1.12);transition:filter .18s}
+#apptitle .applogo.kokka{font-size:clamp(42px,13vw,60px);letter-spacing:.14em;margin-bottom:6px}
+#apptitle .grouptag.big{margin:2px 0 12px}
+#apptitle .grouptag.big b{width:clamp(50px,14.5vw,66px);height:clamp(50px,14.5vw,66px);border-radius:15px;font-size:clamp(28px,8.6vw,38px)}
+#apptitle .catch.long{letter-spacing:.16em}
 #apptitle .tsub{position:relative;color:rgba(165,200,230,.9);font-size:clamp(12px,3.6vw,14.5px);font-weight:bold;letter-spacing:.1em}
 .idolsel-rays{position:absolute;left:50%;top:42%;width:180vmax;height:180vmax;border-radius:50%;
   transform:translate(-50%,-50%);animation:raysSpin 90s linear infinite;opacity:.16;pointer-events:none;
@@ -1871,7 +1875,7 @@ function updateMediaSession(s,el){
     navigator.mediaSession.metadata=new MediaMetadata({
       title:s.title+(s.subtitle?"｜"+s.subtitle:""),
       artist:idolName(),
-      album:"シカクイロ 覚え歌道場",
+      album:"国家資格 シカクイロ",
       artwork:[{src:location.origin==="null"?"assets/sia_praise.png":new URL("assets/sia_praise.png",location.href).href,sizes:"941x1672",type:"image/png"}]
     });
     navigator.mediaSession.setActionHandler("play",function(){ const p=el.play(); if(p&&p.catch)p.catch(function(){}); });
@@ -1914,7 +1918,7 @@ function startChime(){
 // ---------- 道場レジストリ（母艦化の器） ----------
 // アイドル＝分野。active な道場が2つ以上になると、起動時にアイドル選択画面が出る。
 // 1つの間は従来どおりタイトル画面へ直行（準備中の道場は絶対に画面へ出さない）
-const APP_TITLE="覚え歌道場"; // タイトル画面に出すアプリ名（仮決定・1行で差し替え可）
+const APP_TITLE="国家資格"; // タイトル画面のロゴ（「国家資格」＋シカクイロのタイル＝アプリ名「国家資格 シカクイロ」）
 const DOJOS=[
   { id:"shia", active:true, name:"彩鍵シア", furi:"あやかぎ しあ", role:"IT・サイバーアイドル", dojo:"IT・サイバー道場",
     certs:["ITパスポート","情報セキュリティマネジメント","基本情報・応用情報","情報処理安全確保支援士","ネットワークスペシャリスト"],
@@ -2287,19 +2291,18 @@ function renderAppTitle(){
     "<span class=\"pdot m\" style=\"right:16%;top:30%;animation-delay:1.4s\"></span>"+
     "<span class=\"pdot\" style=\"right:22%;top:64%;animation-delay:2.6s\"></span>"+
     "<span class=\"pdot m\" style=\"left:20%;top:58%;animation-delay:.7s\"></span>"+
-    "<div class=\"grouptag\">"+
+    "<div class=\"applogo kokka\">"+esc(APP_TITLE)+"</div>"+
+    "<div class=\"grouptag big\">"+
       "<b style=\"--c:#FF6FD8;--c2:#E8447F;--gl:rgba(255,111,216,.5)\">シ</b>"+
       "<b style=\"--c:#FFD34D;--c2:#F08C00;--gl:rgba(255,211,77,.5)\">カ</b>"+
       "<b style=\"--c:#FF6B4A;--c2:#D6291B;--gl:rgba(255,90,69,.5)\">ク</b>"+
       "<b style=\"--c:#40E5FF;--c2:#1F8FD6;--gl:rgba(64,229,255,.5)\">イ</b>"+
       "<b style=\"--c:#B08CFF;--c2:#7A4FD6;--gl:rgba(176,140,255,.5)\">ロ</b>"+
     "</div>"+
-    "<div class=\"crownlogo\">国家資格アイドルの</div>"+
-    "<div class=\"applogo\">"+esc(APP_TITLE)+"</div>"+
-    "<div class=\"catch\">うたって、うかろう。</div>"+
+    "<div class=\"catch long\">問題と模試、歌で覚える</div>"+
     "<div class=\""+lineupCls+"\"><span class=\"holoring\"></span><span class=\"holoring r2\"></span>"+lineup+"</div>"+
     "<button class=\"tstart\">▶ タップで はじめる</button>"+
-    "<p class=\"tsub\">問題・模試・過去問はぜんぶ無料、広告なし — 覚え歌 全"+totalSongN()+"曲</p>";
+    "<p class=\"tsub\">問題・模試・過去問はぜんぶ無料、広告なし — <span style=\"white-space:nowrap\">覚え歌 全"+totalSongN()+"曲</span></p>";
   el.onclick=function(){
     if(el.classList.contains("opening")) return; // 連打ガード
     el.classList.add("opening");
