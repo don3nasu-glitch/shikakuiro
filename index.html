@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#2E63C9">
-<title>資格のシカクイロ</title>
+<title>国家資格 シカクイロ</title>
 <style>
 @font-face{font-family:"GreekSafe";src:local("Hiragino Maru Gothic ProN"),local("Hiragino Sans"),local("Segoe UI"),local("Arial");unicode-range:U+0370-03FF,U+2126;}
 :root{
@@ -1425,11 +1425,15 @@ window.seekToPercent=function(v){
 // ---------- 歌詞の自動追従（行ごとの開始時刻 sync がある曲だけ） ----------
 let lyrUserScrollAt=0, lyrLastIdx=-1, lyrAutoUntil=0;
 window.addEventListener("scroll",function(){ if(Date.now()>lyrAutoUntil) lyrUserScrollAt=Date.now(); },{passive:true});
+// 実際に鳴っている曲のID。アプリ版はネイティブが通知した曲（切り替え直後はまだ前の曲が鳴っていることがある）、ブラウザ版は currentSongId
+function playingSongId(){ const el=audioEl; if(el&&el._st) return el._st.nowId||null; return currentSongId; }
 function lyricsFollow(){
   const el=audioEl; if(!el) return;
   const s=currentSongId?songById(currentSongId):null;
   const box=document.getElementById("lyrics");
   if(!s||!s.sync||!box||view.name!=="song"||view.arg!==s.id) return;
+  // 鳴っている曲が画面の曲と一致するまでは追従しない（前の曲の再生位置で、別の曲の歌詞が光って進むのを防ぐ）
+  if(playingSongId()!==s.id){ if(lyrLastIdx!==-2){ lyrLastIdx=-2; box.querySelectorAll(".lyr-line").forEach(function(p){ p.classList.remove("on","done"); }); } return; }
   const t=el.currentTime+0.2; // 少しだけ先読みして、歌い出しと同時に光らせる
   let idx=-1; for(let i=0;i<s.sync.length;i++){ if(s.sync[i]<=t) idx=i; else break; }
   if(idx===lyrLastIdx) return;
@@ -1442,6 +1446,7 @@ function lyricsFollow(){
 window.lyricSeek=function(p){
   const s=currentSongId?songById(currentSongId):null; const i=+p.dataset.li;
   if(!s||!s.sync||isNaN(i)||s.sync[i]==null) return;
+  if(playingSongId()!==s.id) return; // 別の曲が鳴っている間に、その曲をシークしない
   const el=getAudioEl();
   try{ el.currentTime=Math.max(0,s.sync[i]-0.1); if(el.paused){ const pr=el.play(); if(pr&&pr.catch)pr.catch(function(){}); } }catch(e){}
   lyrUserScrollAt=0; lyrLastIdx=-1; lyricsFollow();
@@ -1573,7 +1578,7 @@ window.__shiaPlayerEvent=function(e){
   try{
     const el=audioEl; if(!el||!el._st||!e) return; const st=el._st;
     if(e.type==="track"){
-      st.pos=0; st.dur=NaN; st.loaded=false; st.ended=false; st.loadedId=e.id||st.loadedId;
+      st.pos=0; st.dur=NaN; st.loaded=false; st.ended=false; st.loadedId=e.id||st.loadedId; st.nowId=e.id||st.nowId; lyrLastIdx=-1; // nowId=ネイティブが実際に鳴らしている曲
       if(e.id && e.id!==currentSongId){ // ネイティブ側の自動送り・ロック画面の曲送り
         const sg=songById(e.id);
         if(sg){ currentSongId=sg.id; st.src=srcCache[sg.id]||st.src; st.loadedSrc=st.src; if(view.name==="song"){ view={name:"song",arg:sg.id}; } render(); }
@@ -3643,7 +3648,7 @@ window.goSongAt=function(id,li){
   const target=Math.max(0,s.sync[li]-0.5);
   let tries=0; (function seekWhenReady(){
     tries++; const el=audioEl; if(!el){ if(tries<30) setTimeout(seekWhenReady,300); return; }
-    if(el.duration>0 && currentSongId===id){ try{ el.currentTime=target; }catch(e){} if(el.paused){ const pr=el.play(); if(pr&&pr.catch)pr.catch(function(){}); } lyrLastIdx=-1; try{ lyricsFollow(); }catch(e){} return; }
+    if(el.duration>0 && playingSongId()===id){ try{ el.currentTime=target; }catch(e){} if(el.paused){ const pr=el.play(); if(pr&&pr.catch)pr.catch(function(){}); } lyrLastIdx=-1; try{ lyricsFollow(); }catch(e){} return; }
     if(tries<30) setTimeout(seekWhenReady,300);
   })();
 };
