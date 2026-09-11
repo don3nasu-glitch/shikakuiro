@@ -1417,7 +1417,18 @@ window.togglePlay=function(){
   else el.pause();
   syncPlayerUI();
 };
+// 再生画面の曲と、いま鳴っている（止めてある）曲が別のとき＝別の曲を流したまま、ほかの曲の画面を開いている
+function onOtherSongPage(){ return view.name==="song" && !!currentSongId && view.arg!==currentSongId; }
+window.pagePlay=function(){ // 再生画面の▶: 画面の曲が鳴っている曲でなければ、画面の曲に切り替えて再生する
+  if(onOtherSongPage()){ const s=songById(view.arg); if(s) songSrc(s).then(function(u){ playSongNow(s,u); }); return; }
+  togglePlay();
+};
+window.pageJump=function(dir){ // 再生画面の⏮⏭: 画面の曲の前後へ
+  if(onOtherSongPage()){ const t=dir>0?findNextPlayable(view.arg):findPrevPlayable(view.arg); if(t) goSong(t.id); return; }
+  jumpSong(dir);
+};
 window.seekToPercent=function(v){
+  if(view.name==="song" && playingSongId()!==view.arg) return; // 別の曲が鳴っている間は、その曲をシークしない
   const el=getAudioEl();
   if(el.duration&&isFinite(el.duration)){ try{ el.currentTime=el.duration*(v/1000); }catch(e){} }
 };
@@ -1454,6 +1465,16 @@ window.lyricSeek=function(p){
 function syncPlayerUI(){
   const el=audioEl; if(!el) return;
   const btn=document.getElementById("pl-play");
+  if(onOtherSongPage()){ // 別の曲を流したまま、ほかの曲の画面を開いている: この画面の曲は止まっている表示にする
+    document.body.classList.remove("playing");
+    if(btn) btn.textContent="▶";
+    const c0=document.getElementById("pl-cur"), d0=document.getElementById("pl-dur"), k0=document.getElementById("pl-seek");
+    if(c0) c0.textContent="0:00"; if(d0) d0.textContent="0:00"; if(k0 && document.activeElement!==k0) k0.value=0;
+    const p0=document.getElementById("pl-prev"), n0=document.getElementById("pl-next");
+    if(p0) p0.disabled=!findPrevPlayable(view.arg); if(n0) n0.disabled=!findNextPlayable(view.arg);
+    try{ updateMiniPlayer(); }catch(e){}
+    return;
+  }
   try{ const a=getAudioEl(); document.body.classList.toggle("playing", !(a.paused||a.ended)); }catch(e){}
   if(btn) btn.textContent = el.paused ? "▶" : "⏸";
   const cur=document.getElementById("pl-cur"), dur=document.getElementById("pl-dur"), sk=document.getElementById("pl-seek");
@@ -1468,6 +1489,7 @@ function syncPlayerUI(){
   try{ updateMiniPlayer(); }catch(e){}
 }
 window.seekSong=function(d){
+  if(view.name==="song" && playingSongId()!==view.arg) return; // 別の曲が鳴っている間は、その曲をシークしない
   const el=document.getElementById("song-audio"); if(!el) return;
   try{ el.currentTime=Math.max(0,el.currentTime+d); }catch(e){}
 };
@@ -1581,7 +1603,7 @@ window.__shiaPlayerEvent=function(e){
       st.pos=0; st.dur=NaN; st.loaded=false; st.ended=false; st.loadedId=e.id||st.loadedId; st.nowId=e.id||st.nowId; lyrLastIdx=-1; // nowId=ネイティブが実際に鳴らしている曲
       if(e.id && e.id!==currentSongId){ // ネイティブ側の自動送り・ロック画面の曲送り
         const sg=songById(e.id);
-        if(sg){ currentSongId=sg.id; st.src=srcCache[sg.id]||st.src; st.loadedSrc=st.src; if(view.name==="song"){ view={name:"song",arg:sg.id}; } render(); }
+        if(sg){ const prevId=currentSongId; currentSongId=sg.id; st.src=srcCache[sg.id]||st.src; st.loadedSrc=st.src; if(view.name==="song" && view.arg===prevId){ view={name:"song",arg:sg.id}; } render(); }
       }
       el.dispatchEvent(new Event("durationchange"));
     }else if(e.type==="state"){
@@ -1726,12 +1748,14 @@ function playSongNow(s,src,auto){
   setSrcWithCors(el,src);
   try{ el.playbackRate=songRate(); }catch(e){}
   applySongVol(el);
+  const prevId=currentSongId;
   currentSongId=s.id;
   const p=el.play(); if(p&&p.catch) p.catch(function(){});
   updateMediaSession(s,el);
   prepareNeighbors(s.id);
-  view={name:"song",arg:s.id};
-  render(); // 画面が見えていればUIを追従させる（背面では実害なし）
+  // 自分で選んだ曲なら再生画面へ。自動の曲送りでは、流れていた曲の画面を見ているときだけ追従する（ほかの画面や別の曲の画面は奪わない）
+  if(!auto || (view.name==="song" && view.arg===prevId)) view={name:"song",arg:s.id};
+  render();
 }
 // ランダム再生・ループ再生の設定
 function shufOn(){ return localStorage.getItem("shia_song_shuffle")==="1"; }
@@ -1784,6 +1808,11 @@ function initSongAudio(){
   const s=songById(view.arg);
   if(!slot||!s){ songAutoplay=false; return; }
   const el=getAudioEl();
+  // 別の曲が再生中なら、画面を開いただけではその曲を止めたり乗っ取ったりしない（この画面の再生ボタンを押したら切り替える）
+  if(currentSongId && currentSongId!==s.id && !(el.paused||el.ended)){
+    if(songAutoplay){ songAutoplay=false; songSrc(s).then(function(u){ playSongNow(s,u); }); }
+    syncPlayerUI(); return;
+  }
   el.style.display="";
   slot.appendChild(el); // 常駐要素を表示位置へ移動（再生は途切れない）
   if(currentSongId!==s.id){
@@ -1824,7 +1853,7 @@ function updateMiniPlayer(){
   const a=audioEl;
   const song=currentSongId?songById(currentSongId):null;
   const active=!!(a && song && a.getAttribute("src"));
-  const hide=!active || view.name==="song" || view.name==="quiz" || view.name==="flash";
+  const hide=!active || (view.name==="song" && view.arg===currentSongId) || view.name==="quiz" || view.name==="flash";
   el.classList.toggle("show", !hide);
   if(hide) return;
   el.classList.toggle("paused", a.paused);
@@ -2470,9 +2499,9 @@ function songView(){
     <div class="pl-disc"><b>${esc(currentDojo==="shia"?s.title.replace("編",""):String(s.num))}</b></div>
     <div class="pl-main">
       <button class="pl-mode${shufOn()?" on":""}" onclick="toggleShuffle()" aria-label="ランダム再生">🔀</button>
-      <button class="pl-skip" id="pl-prev" onclick="jumpSong(-1)" aria-label="前の曲">⏮</button>
-      <button class="pl-play" id="pl-play" onclick="togglePlay()" aria-label="再生">▶</button>
-      <button class="pl-skip" id="pl-next" onclick="jumpSong(1)" aria-label="次の曲">⏭</button>
+      <button class="pl-skip" id="pl-prev" onclick="pageJump(-1)" aria-label="前の曲">⏮</button>
+      <button class="pl-play" id="pl-play" onclick="pagePlay()" aria-label="再生">▶</button>
+      <button class="pl-skip" id="pl-next" onclick="pageJump(1)" aria-label="次の曲">⏭</button>
       <button class="pl-mode${repMode()!=="off"?" on":""}" onclick="cycleRepeat()" aria-label="ループ再生">${repMode()==="one"?"🔂":"🔁"}</button>
     </div>
     ${shufOn()||repMode()!=="off"?`<p class="small" style="text-align:center;margin-top:6px;font-weight:bold">${shufOn()?"🔀 ランダム再生":""}${shufOn()&&repMode()!=="off"?" ・ ":""}${repMode()==="all"?"🔁 全曲ループ":repMode()==="one"?"🔂 1曲ループ":""}</p>`:""}
