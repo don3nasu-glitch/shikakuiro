@@ -788,7 +788,7 @@ const COURSES=[
    examQuota:{"電気の基礎理論":6,"配電理論・配線設計":7,"電気機器・材料・工具":8,"発変電・送配電・受電設備":10,"施工方法":8,"検査・測定・保安":6,"法令":5}},
   {id:"dr3",dojo:"rena",icon:"⚙️",name:"電験三種 4科目編",exam:"第三種電気主任技術者試験（電験三種）対応",
    desc:"理論・電力・機械・法規を本番と同じ五肢択一で。電気の最高峰へ！",count:110,
-   examN:17,examMin:90,examNote:"本番1科目分（五肢択一17問・90分）と同じ形式。4科目から横断出題",
+   examN:17,examMin:90,examNote:"理論・電力・機械の1科目分（五肢択一17問・90分）を目安にした、4科目の横断演習",
    examQuota:{"理論":5,"電力":4,"機械":4,"法規":4}},
   {id:"kz4",dojo:"sena",icon:"🔥",name:"危険物取扱者 乙4編",exam:"危険物取扱者試験 乙種第4類（乙4）対応",
    desc:"法令・物化・性消の3科目を本番と同じ配分で。図つき100問超、ガソリンスタンドの必携資格！",count:600,
@@ -863,6 +863,7 @@ function songsUnlocked(){ return premium; }
 function setPremium(on){
   premium = !!on;
   try{ localStorage.setItem("shia_premium", on?"on":"off"); }catch(e){}
+  try{ npRefreshQueue(); }catch(e){} // 購入・復元の直後から、鳴らしているキューの試聴制限を外す
   render();
 }
 let storePrice = "";
@@ -1278,8 +1279,9 @@ function dlMap(){ try{return JSON.parse(localStorage.getItem("shia_songs_dl")||"
 function isDownloaded(id){ const s=songById(id); return !!(s && dlMap()[id]===s.file); }
 function fsPlugin(){ return (window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.Filesystem)||null; }
 window.dlSong=async function(id){
-  if(!songsUnlocked()){ go('premium'); return; }
-  const s=songById(id); if(!s||songDlBusy) return;
+  const s=songById(id); if(!s) return;
+  if(!s.free && !songsUnlocked()){ go('premium'); return; } // 無料曲はだれでも保存できる。それ以外はプレミアム
+  if(songDlBusy) return;
   songDlBusy=id; render();
   try{
     const res=await fetch(SONGS_BASE_URL+s.file);
@@ -1295,6 +1297,7 @@ window.dlSong=async function(id){
       try{ await FS.deleteFile({path:"songs_"+id+".m4a",directory:"DATA"}); }catch(e){} // 旧方式(曲ID名)の残骸も掃除
     }
     const m=dlMap(); m[id]=s.file; localStorage.setItem("shia_songs_dl",JSON.stringify(m)); // どの版を持っているか記録
+    npRefreshQueue([id]); // 再生中のキューも端末内ファイルに切り替える
   }catch(e){
     showAlert("ダウンロードできませんでした。通信環境をご確認のうえ、もう一度お試しください。");
   }
@@ -1308,6 +1311,7 @@ window.rmSong=async function(id){
   const FS=fsPlugin(); const f=dlMap()[id];
   if(FS&&f&&typeof f==="string"){ try{ await FS.deleteFile({path:"songs_"+f,directory:"DATA"}); }catch(e){} }
   const m=dlMap(); delete m[id]; try{ localStorage.setItem("shia_songs_dl",JSON.stringify(m)); }catch(e){}
+  npRefreshQueue([id]); // 消したファイルを指したままにしない
   render();
 };
 window.rmAllSongs=async function(){
@@ -1316,6 +1320,7 @@ window.rmAllSongs=async function(){
   const FS=fsPlugin();
   for(const id of keys){ if(FS&&m[id]&&typeof m[id]==="string"){ try{ await FS.deleteFile({path:"songs_"+m[id],directory:"DATA"}); }catch(e){} } }
   try{ localStorage.setItem("shia_songs_dl","{}"); }catch(e){}
+  npRefreshQueue();
   render();
 };
 // この道場の曲をまとめてダウンロード（1曲ずつ順番に。失敗した曲は飛ばして続行）
@@ -1343,6 +1348,7 @@ window.dlAllSongs=async function(){
     }catch(e){ /* 通信失敗した曲は飛ばして次へ */ }
     dlAllBusy.done++; render();
   }
+  npRefreshQueue();
   dlAllBusy=null; render();
 };
 async function songSrc(s){
@@ -1459,9 +1465,9 @@ function lyricsFollow(){
   if(idx>=0 && lines[idx] && Date.now()-lyrUserScrollAt>4000){ lyrAutoUntil=Date.now()+400; try{ lines[idx].scrollIntoView({block:"center",behavior:"auto"}); }catch(e){} }
 }
 window.lyricSeek=function(p){
-  const s=currentSongId?songById(currentSongId):null; const i=+p.dataset.li;
+  const s=(view.name==="song")?songById(view.arg):null; const i=+p.dataset.li; // 画面に出ている曲の歌詞として扱う
   if(!s||!s.sync||isNaN(i)||s.sync[i]==null) return;
-  if(playingSongId()!==s.id) return; // 別の曲が鳴っている間に、その曲をシークしない
+  if(currentSongId!==s.id || playingSongId()!==s.id) return; // 別の曲が鳴っている間は、その曲をシークしない（この画面の▶で切り替えてから）
   const el=getAudioEl();
   try{ el.currentTime=Math.max(0,s.sync[i]-0.1); if(el.paused){ const pr=el.play(); if(pr&&pr.catch)pr.catch(function(){}); } }catch(e){}
   lyrUserScrollAt=0; lyrLastIdx=-1; lyricsFollow();
@@ -1585,8 +1591,7 @@ function makeNativeSongEl(){
     const list=activeSongs().filter(function(x){return songPlayable(x)});
     const src=st.src;
     (async function(){
-      await ensureSrcCache(list);
-      const tracks=list.map(function(x){ const pv=songPreview(x); return {id:x.id, src:(x.id===sid && src)?src:(srcCache[x.id]||SONGS_BASE_URL+x.file), title:x.title+(pv?"（試聴）":""), artist:nativeArtist(), art:nativeArtPath(), preview:pv||undefined}; });
+      const tracks=await npTracks(list,sid,src);
       if(!tracks.length) return;
       st.loadedId=sid; st.loadedSrc=src; st.ended=false;
       npPost({cmd:"queue",tracks:tracks,start:sid,autoplay:true,repeat:repMode(),shuffle:shufOn()});
@@ -1598,6 +1603,22 @@ function makeNativeSongEl(){
   el.pause=function(){ npPost({cmd:"pause"}); };
   el.load=function(){};
   return el;
+}
+// ネイティブへ渡す曲の一覧（再生元と試聴区間）。再生元は端末内ファイルがあればそれ、なければ配信
+async function npTracks(list,sid,src){
+  await ensureSrcCache(list);
+  return list.map(function(x){ const pv=songPreview(x); return {id:x.id, src:(x.id===sid && src)?src:(srcCache[x.id]||SONGS_BASE_URL+x.file), title:x.title+(pv?"（試聴）":""), artist:nativeArtist(), art:nativeArtPath(), preview:pv||undefined}; });
+}
+// オフライン保存・削除・購入/復元のあとで、ネイティブがすでに持っているキューを最新にする。
+// いま鳴っている曲は止めない（再生位置もそのまま）。次に読み込む曲から新しい再生元になり、試聴の制限はその場で外れる
+function npRefreshQueue(ids){
+  try{
+    (ids||Object.keys(srcCache)).forEach(function(id){ delete srcCache[id]; });
+    const el=audioEl; if(!el||!el._st||!el._st.loadedId) return;
+    const list=activeSongs().filter(function(x){return songPlayable(x)});
+    if(!list.some(function(x){ return x.id===el._st.loadedId; })) return; // 別の道場の曲が鳴っているときは、そのキューを入れ替えない
+    npTracks(list,null,null).then(function(tracks){ if(tracks.length) npPost({cmd:"update",tracks:tracks}); });
+  }catch(e){}
 }
 // ネイティブからの状態通知
 window.__shiaPlayerEvent=function(e){
@@ -1611,6 +1632,7 @@ window.__shiaPlayerEvent=function(e){
       }
       el.dispatchEvent(new Event("durationchange"));
     }else if(e.type==="state"){
+      if(e.id && e.id!==st.nowId){ st.nowId=e.id; lyrLastIdx=-1; } // 曲の通知を取りこぼしても、状態通知から実際の曲に合わせ直す
       const wasPaused=st.paused;
       st.paused=!e.playing; st.ended=!!e.ended; st.pos=e.position||0;
       if(e.duration>0){ const first=!(st.dur>0); st.dur=e.duration; if(first){ st.loaded=true; el.dispatchEvent(new Event("loadedmetadata")); el.dispatchEvent(new Event("durationchange")); } }
@@ -1679,6 +1701,7 @@ function getAudioEl(){
       if(!audioEl._st && currentSongId){ // 試聴区間の終わりで止める（ネイティブ再生では ShiaPlayer 側が止める）
         const sg=songById(currentSongId), pv=sg?songPreview(sg):null;
         if(pv && t>=pv.end){ audioEl.pause(); try{ audioEl.currentTime=pv.start; }catch(e){} previewEndNotice(); return; }
+        if(pv && pv.start>0 && t<pv.start-0.6){ try{ audioEl.currentTime=pv.start; }catch(e){} return; } // 試聴区間より前には戻れない
       }
       if(listenLast!==null){ const d=t-listenLast; if(d>0 && d<2.5) listenAcc+=d; }
       listenLast=t;
@@ -3443,7 +3466,7 @@ function soundView(){
   ${sl("🎶","タイトル画面の曲の音量","theme","タイトル・アイドル選択画面で流れるシカクイロのテーマ曲の音量だよ")}
   ${sl("🎼","BGMの音量","bgm","ホームや学習画面のBGMの音量だよ")}
   ${sl("👆","効果音の音量","sfx","タップ音や開演チャイムの音量。動かすと試し聴きできるよ")}
-  <p class="small" style="line-height:1.7">🤫 マナーモード中は、イヤホンをつけているときだけ音が出る安心設計だよ（アプリ版）。</p>
+  <p class="small" style="line-height:1.7">🤫 マナーモード中は、BGMと効果音はイヤホンをつけているときだけ鳴るよ（アプリ版）。覚え歌は音楽アプリと同じで、マナーモード中でも再生ボタンを押すと鳴るから、音量に気をつけてね。</p>
   </div>`;
 }
 // ---------- コース選択 ----------
@@ -3711,12 +3734,12 @@ function pastView(){
     const skipped=st.skipped?st.skipped.length:0;
     return `<div class="card">
       <p style="font-size:14px;font-weight:bold">${esc(st.label)}</p>
-      <p class="small" style="margin:6px 0 10px;line-height:1.7">収録 ${st.questions.length}問${skipped?"（図表つきの"+skipped+"問は準備中）":""}${st.note?"・"+esc(st.note):""}・本番どおりの順番・制限時間${st.min}分${best!==null?"・自己ベスト <b style=\"color:#E85A8A\">"+best+"%</b>":""}</p>
+      <p class="small" style="margin:6px 0 10px;line-height:1.7">収録 ${st.questions.length}問${skipped?"（図表つきの"+skipped+"問は準備中）":""}${st.note?"・"+esc(st.note):""}・問題番号順・制限時間${st.min}分${best!==null?"・自己ベスト <b style=\"color:#E85A8A\">"+best+"%</b>":""}</p>
       <div class="row"><button class="btn" style="padding:11px;font-size:12px" onclick="startPastExam('${st.id}')">本番どおりに解く</button>
       <button class="btn ghost" style="padding:11px;font-size:12px" onclick="startPastQuiz('${st.id}')">1問ずつ解く</button></div></div>`;
   }).join("");
   return `<h1>📜 公式過去問</h1><div class="gap" style="margin-top:12px">
-  ${bubble("cheer",pastOrg().short+"が公開している本物の過去問だよ。年度ごとに、本番と同じ順番・時間で挑戦できる！出典は各問題に明記してあるよ")}
+  ${bubble("cheer",pastOrg().short+"が公開している本物の過去問だよ。年度ごとに、問題番号の順に制限時間つきで挑戦できる！図表の準備中の問は除いてあるよ。出典は各問題に明記してあるよ")}
   ${cards||'<div class="card"><p class="small">このコースの過去問セットはまだないよ</p></div>'}
   <p class="small" style="text-align:center;line-height:1.7">問題は${esc(pastOrg().name)}公開の過去問題・公開問題を、${esc(pastOrg().terms)}に従って収録しています。図表を含む問題は図をアプリ用に描き起こしてから順次追加します。</p>
   </div>`;
@@ -3961,8 +3984,8 @@ function examView(){
   ${bubble("cheer","模試は力試しにぴったり！まずはミニ模試から、自信がついたら本格模試に挑戦してみよ！")}
   ${examChart()}
   ${pastAvailable()?`<div class="card" onclick="go('past')" style="cursor:pointer;border:2px solid rgba(142,124,195,.35)">
-    <p style="font-size:14px;font-weight:bold">📜 公式過去問（年度別・本番どおりの順番）</p>
-    <p class="small" style="margin:6px 0 0;line-height:1.7">${esc(pastOrg().short)}公開の本物の過去問を、本番と同じ順番・制限時間で。出典つき →</p></div>`:""}
+    <p style="font-size:14px;font-weight:bold">📜 公式過去問（年度別・問題番号順）</p>
+    <p class="small" style="margin:6px 0 0;line-height:1.7">${esc(pastOrg().short)}公開の本物の過去問を、問題番号順に制限時間つきで。出典つき →</p></div>`:""}
   <div class="card">
     <p style="font-size:14px;font-weight:bold">⚡ ミニ模試（10問・制限時間10分）</p>
     <p class="small" style="margin:6px 0 10px;line-height:1.7">全分野からランダムに10問。すきま時間でサクッと腕試し！合格判定つき。</p>
