@@ -1078,7 +1078,7 @@ function missionCard(){
   const item=function(ic,label,cur,goal,go_){ const ok=cur>=goal; return '<a href="javascript:void(0)" onclick="'+go_+'" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:12px;background:'+(ok?"rgba(63,182,139,.12)":"rgba(47,59,92,.05)")+';text-decoration:none;color:#2F3B5C"><span style="font-size:16px">'+(ok?"✅":ic)+'</span><span style="flex:1;font-size:12.5px;font-weight:bold'+(ok?';text-decoration:line-through;opacity:.7':'')+'">'+label+'</span><span class="small" style="font-weight:bold">'+Math.min(cur,goal)+'/'+goal+'</span></a>'; };
   const all=d.q>=MISSION.q && d.song>=MISSION.song && d.exam>=MISSION.exam;
   return '<div class="card" style="padding:12px 14px">'+
-    '<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:13.5px">🎯 今日のミッション'+(all?"　達成！":"")+'</b>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:13.5px">🎯 ボーナスミッション'+(all?"　達成！":"")+'</b>'+
     (st.days>0?'<span class="streak">🔥 '+st.days+'日連続</span>':'<span class="small">今日から連続記録スタート</span>')+'</div>'+
     '<div style="display:grid;gap:6px;margin-top:8px">'+
       item("📝","問題を3問とく",d.q,MISSION.q,"startFlashAll()")+
@@ -2003,6 +2003,7 @@ function dailyLine(){
 function oshiHomeTop(){
   const d=dojoById(currentDojo);
   let h='<div style="margin-bottom:12px">'+bubble("normal",'<span class="daily-tag" style="--c:'+d.accent+'">今日のひとこと</span><br>'+esc(dailyLine()))+'</div>';
+  h+=today5Card();
   // 誕生日: この道場のアイドル、または推しメンの誕生日
   const cands=[d]; const o=oshiDojo(); if(o&&o.id!==d.id) cands.push(o);
   cands.forEach(function(x){
@@ -2812,6 +2813,63 @@ function vibrate(){
 }
 
 // ---------- 正解時のシアちゃんポップイン演出 ----------
+// ---------- アイドルごとの台詞（口調は「今日のひとこと」に合わせる） ----------
+const VOICE={
+  shia:{praise:PRAISE, comfort:COMFORT, cheers:CHEERS,
+    fin:["全問正解！本当にすごいよ、この分野はもうばっちりだね！","合格ライン超え！間違えた問題は「復習」からもう一回やってみよ？","間違えたところは伸びしろだよ。「復習」タブで一緒におさらいしよ！"],
+    five:["今日の5問、おつかれさま！こつこつが、いちばん強いんだよ♪","5問できたね！この一歩が、本番の自信になるよ","今日もいっしょに進めてうれしい！また明日も待ってるね"],
+    fiveReview:["復習おつかれさま！前に迷ったところ、もう一度向き合えたね","間違えた問題に戻ってこられるの、すごいことだよ","復習できたね！くり返した分だけ、忘れにくくなるよ♪"]},
+  rena:{praise:["正解だ。その調子","よし、合ってる","正解。理屈が通ってるな","いいぞ、正解だ"],
+    comfort:["惜しい。どこで分かれたか、解説で確かめろ","間違えた今が、いちばん覚える","落ち着け。式に戻れば見える","ここは本番でも出る。今つぶしておけ"],
+    cheers:["落ち着いて、問題文を読め","単位と条件から押さえろ","図があるなら図から見ろ","焦るな。分かるところから絞れ"],
+    fin:["全問正解だ。この分野は任せていい","合格ラインは越えた。落とした問題は「復習」でつぶしておけ","間違えたところが伸びる場所だ。「復習」で一つずつ確かめろ"],
+    five:["今日の5問、完了だ。毎日来るやつが、いちばん伸びる","5問、やりきったな。今日の分は積めた","よし。小さく続けるのが、結局いちばん速い"],
+    fiveReview:["復習、完了だ。迷ったところに戻れるのは強い","前に落とした問題に向き合ったな。それでいい","復習は地味だが効く。今日の分は済んだ"]},
+  sena:{praise:["正解。よくできたね","合ってるよ、その調子","正解。落ち着いて選べたね","うん、正解。いい判断"],
+    comfort:["大丈夫。解説でいっしょに確かめよう","惜しかったね。今ここで覚えれば大丈夫","間違えても平気。備えは、気づいたところから","ここは混ざりやすいの。もう一度見ておこうね"],
+    cheers:["落ち着いて、ひとつずつ見ていこうね","問題文の条件を、まず確かめよう","数字と名前に注目してみて","あわてなくて大丈夫。ゆっくりでいいの"],
+    fin:["全問正解。この分野は、もう安心ね","合格ラインを越えたね。間違えた問題は「復習」でもう一度確かめよう","間違えたところは、これから備えられるところ。「復習」でいっしょに見直そうね"],
+    five:["今日の5問、おつかれさま。毎日の備えが、いちばん確かなの","5問できたね。今日も一歩、進めたよ","来てくれてありがとう。続けた分だけ、落ち着いて解けるようになるの"],
+    fiveReview:["復習、おつかれさま。迷ったところを確かめられたね","前に間違えた問題に戻れたね。それがいちばんの備えなの","復習できたね。くり返すほど、忘れにくくなるよ"]},
+  towa:{praise:["正解。工程どおりだ","よし、合ってる","正解だ。根拠も押さえたな","いいね、正解"],
+    comfort:["惜しい。どこで手戻りしたか、解説で確かめよう","間違えた今が、直しどきだ","落ち着いて。数字と用語に戻れば解ける","ここは現場でも試験でも出る。今、固めよう"],
+    cheers:["落ち着いて、条件を一つずつ読もう","数字と単位から確かめよう","図や表があれば、そこから見よう","焦らない。消せる選択肢から消そう"],
+    fin:["全問正解だ。この分野は完成している","合格ラインは越えた。落とした問題は「復習」で手直ししておこう","間違えたところが、次の工程だ。「復習」で一つずつ固めよう"],
+    five:["今日の5問、完了だ。今日の1問が、工程の1本になる","5問、積めたね。工程どおりだ","よし。小さく積むのが、いちばん確実だ"],
+    fiveReview:["復習、完了だ。手戻りを先につぶせたね","前に落とした問題に戻れた。それが品質管理だ","復習は地味だけど効く。今日の分は固まった"]}
+};
+function voice(kind,i){ const v=(VOICE[currentDojo]||VOICE.shia)[kind]||VOICE.shia[kind]; return v[Math.abs(i||0)%v.length]; }
+
+// ---------- 今日の5問 ----------
+// 復習の時期が来た問題があればそれを優先（最大5問）、なければ、まだ解いていない問題を中心に5問。受講中のコースからだけ出す
+const TODAY5_N=5;
+function today5Plan(){
+  const all=pool(); const d=new Set(dueIds()); const due=all.filter(function(q){ return d.has(q.id); });
+  if(due.length) return {mode:"review", n:Math.min(TODAY5_N,due.length), qs:due};
+  const h=loadH(); const unseen=all.filter(function(q){ return !h[q.id]; });
+  return {mode:"new", n:Math.min(TODAY5_N,all.length), qs:(unseen.length>=TODAY5_N?unseen:all)};
+}
+window.startToday5=function(){
+  if(courseState!=="ready"){ render(); return; } // 問題がまだ読めていないときは始めない（読み込み中・再試行の画面を出す）
+  const p=today5Plan(); if(!p.n) return;
+  startQuiz(shuffle(p.qs).slice(0,p.n), p.mode==="review"?"今日の復習":"今日の5問", null, "home");
+  qz.today=p.mode;
+};
+function today5Card(){
+  const c=curCourse(), p=today5Plan(), t=todayData(), acc=dojoById(currentDojo).accent;
+  const label = p.mode==="review" ? "今日の復習をはじめる（"+p.n+"問）" : (t.five?"もう"+p.n+"問とく":"今日の"+p.n+"問をはじめる");
+  return '<div class="card today5" style="margin-bottom:12px;padding:14px">'+
+    '<div style="display:flex;align-items:center;gap:8px">'+
+      '<span style="flex:1;min-width:0"><span class="small" style="display:block">受講中のコース</span>'+
+      '<b style="display:block;font-size:14px;line-height:1.4">'+c.icon+' '+esc(c.name)+'</b></span>'+
+      '<button class="btn ghost" style="width:auto;flex:0 0 auto;padding:8px 12px;font-size:12px" onclick="go(\'courses\')">変更</button></div>'+
+    '<button class="btn" style="margin-top:12px;font-size:16px;padding:16px" onclick="startToday5()">'+(p.mode==="review"?"🔁 ":"✏️ ")+label+'</button>'+
+    (p.mode==="review"?'<p class="small" style="margin-top:6px;text-align:center">前に解いた問題のうち、復習の時期が来たものだよ</p>':'')+
+    '<div class="row" style="margin-top:8px">'+
+      '<button class="btn ghost" style="padding:11px;font-size:13px" onclick="go(\'songs\')">🎵 覚え歌を聴く</button>'+
+      '<button class="btn ghost" style="padding:11px;font-size:13px" onclick="go(\'category\')">📖 分野を選ぶ</button></div>'+
+    '<p class="small" style="margin-top:8px;text-align:center">今日とけた問題：<b style="color:'+acc+'">'+(t.q||0)+'</b>問'+(t.five?'　🌸 今日の5問、達成！':'')+'</p></div>';
+}
 const PRAISE_POP=["せいかい！すごい！やったね！","その調子！","さすが！まもるちからが上がってるよ♪","大じょうぶ、この調子でいっしょにおぼえよう♪"];
 let praiseAudio=null, praiseTimer=null;
 try{ new Image().src="assets/sia_praise.png"; }catch(e){}
@@ -2974,9 +3032,13 @@ function quizView(){
   }
   if(qz.finished){
     const rate=Math.round(qz.correct/qz.qs.length*100);
-    const msg = rate===100 ? "全問正解！本当にすごいよ、この分野はもうばっちりだね！"
-      : rate>=70 ? "合格ライン超え！間違えた問題は「復習」からもう一回やってみよ？"
-      : "間違えたところは伸びしろだよ。「復習」タブで一緒におさらいしよ！";
+    let msg = voice("fin", rate===100?0:rate>=70?1:2);
+    if(qz.today){
+      // 5問やりきったことを祝う（正答率で「できた」とは言わない）。1日の達成は1回だけ記録し、描き直しで重複させない
+      if(!qz.todayCounted){ qz.todayCounted=true; try{ const t=todayData(); t.five=(t.five||0)+1; localStorage.setItem(TODAY_KEY,JSON.stringify(t)); }catch(e){} }
+      const miss=qz.qs.length-qz.correct;
+      msg = esc(voice(qz.today==="review"?"fiveReview":"five", new Date().getDate())) + (miss>0?'<br><span class="small">間違えた'+miss+'問は、また復習に出てくるよ</span>':'');
+    }
     const poseImg=idolPose(), poseName=idolName();
     return `<div class="center" style="padding:20px 0"><img class="shiapop shia-happy" src="${poseImg}" width="140" alt="${poseName}" style="border-radius:14px">
       <p style="font-size:18px;font-weight:bold">${getNick()?esc(getNick())+"さん、":""}おつかれさま！</p>
@@ -2993,11 +3055,14 @@ function quizView(){
       ${qz.timeout?`<p class="small" style="font-weight:bold;color:#F1607A">⏰ 制限時間切れで終了したよ。時間配分も本番の練習！</p>`:""}
       ${qz.exam?examDelta(rate):""}
       ${qz.graded?`<button class="btn ghost" style="width:100%" onclick="reviewExam()">📖 解答と解説を確認する（本番画面のまま見直せるよ）</button>`:""}
-      ${bubble(rate>=70?"cheer":"normal",msg)}
-      <div class="row" style="width:100%">
+      ${bubble(qz.today||rate>=70?"cheer":"normal",msg)}
+      ${qz.today?`<div class="row" style="width:100%">
+        <button class="btn ghost" onclick="startToday5()">もう少しとく</button>
+        <button class="btn" onclick="go('home')">ホームへ</button>
+      </div>`:`<div class="row" style="width:100%">
         <button class="btn ghost" onclick="go('review')">復習する</button>
         <button class="btn" onclick="go('category')">他の分野へ</button>
-      </div></div>`;
+      </div>`}</div>`;
   }
   if(qz.exam) return examQuestionView();
   const q=qz.qs[qz.idx], a=qz.picked, done=a!==null, ok=a===q.answer;
@@ -3024,10 +3089,10 @@ function quizView(){
   html+=`</div>`;
   if(!done){
     html+=`<div style="display:flex;align-items:center;gap:8px;margin-top:12px">${shia("normal",46)}
-      <p class="small" style="font-weight:bold">${nickTag()}${CHEERS[qz.idx%CHEERS.length]}</p></div>`;
+      <p class="small" style="font-weight:bold">${nickTag()}${esc(voice("cheers",qz.idx))}</p></div>`;
   }
   if(done){
-    const lead = ok?PRAISE[qz.idx%PRAISE.length]:COMFORT[qz.idx%COMFORT.length];
+    const lead = ok?voice("praise",qz.idx):voice("comfort",qz.idx);
     html+=`<div class="gap" style="margin-top:14px">
       <div style="text-align:center"><img class="shiapop ${ok?"shia-happy":"shia-sad"}" src="${idolPose()}" width="112" alt="${idolName()}" style="border-radius:12px"></div>
       <p class="judge ${ok?"ok":"ng"}">${ok?"⭕ せいかい！":"❌ ざんねん…"}</p>
@@ -3090,7 +3155,7 @@ function flashView(){
   html+=`</div>`;
   if(!done){
     html+=`<div style="display:flex;align-items:center;gap:8px;margin-top:12px">${shia("normal",46)}
-      <p class="small" style="font-weight:bold">${nickTag()}${CHEERS[fl.idx%CHEERS.length]}</p></div>`;
+      <p class="small" style="font-weight:bold">${nickTag()}${esc(voice("cheers",fl.idx))}</p></div>`;
   }
   if(done){
     html+=`<div class="gap" style="margin-top:12px;gap:10px">
